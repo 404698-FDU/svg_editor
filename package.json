@@ -1,0 +1,27 @@
+{
+  "name": "svg-editor-cli",
+  "version": "1.0.0",
+  "description": "Fudan CS30075 Software Design - SVG Editor CLI",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "svg",
+    "cli",
+    "editor",
+    "typescript",
+    "oop"
+  ],
+  "author": "404698-FDU",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
