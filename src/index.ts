@@ -1,2 +1,4 @@
-// SVG Editor CLI - Entry Point
-console.log("SVG Editor CLI initialized.");
+import { CliRepl } from './cli/CliRepl';
+
+const repl = new CliRepl();
+repl.start();
