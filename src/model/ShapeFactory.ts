@@ -7,7 +7,7 @@ import { TextShape } from './TextShape';
 import { GroupShape } from './GroupShape';
 
 /**
- * Factory for creating Shape instances by type name.
+ * Factory for creating Shape instances by type name (both CLI creation and XML deserialization).
  * NOTE [Architecture Pending Refactoring]:
  * This is one of the ONLY TWO allowed name-based dispatch points in Phase 1 (Section 2.1).
  * In Phase 2 (Plugin Architecture), this switch will be replaced by a ShapeProvider registry.
@@ -85,6 +85,77 @@ export class ShapeFactory {
         }
         return new GroupShape(id);
       }
+      default:
+        throw new Error(`error: unknown shape type: ${type} (is the plugin loaded?)`);
+    }
+  }
+
+  public static createFromSvgElement(
+    type: string,
+    id: string,
+    attrs: ReadonlyMap<string, string>,
+    textContent?: string
+  ): Shape {
+    const fill = attrs.get('fill');
+    const stroke = attrs.get('stroke');
+    const strokeWidth = attrs.get('stroke-width');
+
+    switch (type) {
+      case 'rect':
+        return new RectShape(
+          id,
+          Number(attrs.get('x') ?? 0),
+          Number(attrs.get('y') ?? 0),
+          Number(attrs.get('width') ?? 0),
+          Number(attrs.get('height') ?? 0),
+          fill,
+          stroke,
+          strokeWidth
+        );
+      case 'circle':
+        return new CircleShape(
+          id,
+          Number(attrs.get('cx') ?? 0),
+          Number(attrs.get('cy') ?? 0),
+          Number(attrs.get('r') ?? 0),
+          fill,
+          stroke,
+          strokeWidth
+        );
+      case 'ellipse':
+        return new EllipseShape(
+          id,
+          Number(attrs.get('cx') ?? 0),
+          Number(attrs.get('cy') ?? 0),
+          Number(attrs.get('rx') ?? 0),
+          Number(attrs.get('ry') ?? 0),
+          fill,
+          stroke,
+          strokeWidth
+        );
+      case 'line':
+        return new LineShape(
+          id,
+          Number(attrs.get('x1') ?? 0),
+          Number(attrs.get('y1') ?? 0),
+          Number(attrs.get('x2') ?? 0),
+          Number(attrs.get('y2') ?? 0),
+          stroke,
+          fill,
+          strokeWidth
+        );
+      case 'text':
+        return new TextShape(
+          id,
+          Number(attrs.get('x') ?? 0),
+          Number(attrs.get('y') ?? 0),
+          textContent ?? '',
+          fill,
+          stroke,
+          strokeWidth
+        );
+      case 'g':
+        return new GroupShape(id, fill, stroke, strokeWidth);
       default:
         throw new Error(`error: unknown shape type: ${type} (is the plugin loaded?)`);
     }

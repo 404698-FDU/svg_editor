@@ -2,56 +2,6 @@ import { Shape } from './Shape';
 import { GroupShape } from './GroupShape';
 import { ShapeFactory } from './ShapeFactory';
 
-export interface DeletedShapeRecord {
-  shape: Shape;
-  parentContainer: GroupShape;
-  index: number;
-}
-
-export interface ScaledShapeRecord {
-  id: string;
-  factor: number;
-  snapshot: number[];
-}
-
-export interface SetAttributeRecord {
-  id: string;
-  attr: string;
-  oldValue: string | undefined;
-}
-
-export interface GroupMemberPosition {
-  shape: Shape;
-  oldParent: GroupShape;
-  oldIndex: number;
-}
-
-export interface GroupedShapesRecord {
-  newGroup: GroupShape;
-  groupParent: GroupShape;
-  memberPositions: GroupMemberPosition[];
-}
-
-export interface UngroupedShapeRecord {
-  groupShape: GroupShape;
-  parent: GroupShape;
-  groupIndex: number;
-  children: Shape[];
-}
-
-export interface AddToContainerRecord {
-  shape: Shape;
-  targetContainer: GroupShape;
-  oldParent: GroupShape;
-  oldIndex: number;
-}
-
-export interface ZOrderRecord {
-  shape: Shape;
-  parent: GroupShape;
-  oldIndex: number;
-}
-
 /**
  * Receiver in the Command Pattern.
  * Represents an SVG document holding the canvas dimensions, the root Composite container,
@@ -163,7 +113,6 @@ export class SvgDocument {
     if (this.shapeIndex.has(id)) {
       throw new Error(`error: id already exists: ${id}`);
     }
-    // Validate target container before creating shape
     this.getContainerOrThrow(containerId);
     const shape = ShapeFactory.create(type, id, params);
     this.addShape(shape, containerId);
@@ -174,7 +123,11 @@ export class SvgDocument {
     return { shape, message };
   }
 
-  public removeShape(id: string): DeletedShapeRecord {
+  public removeShape(id: string): {
+    shape: Shape;
+    parentContainer: GroupShape;
+    index: number;
+  } {
     const shape = this.getShapeOrThrow(id);
     const parent = shape.getParent();
     if (!parent) {
@@ -187,11 +140,18 @@ export class SvgDocument {
     return { shape, parentContainer: parent, index };
   }
 
-  public deleteShape(id: string): { record: DeletedShapeRecord; message: string } {
-    const record = this.removeShape(id);
+  public deleteShape(id: string): {
+    shape: Shape;
+    parentContainer: GroupShape;
+    index: number;
+    message: string;
+  } {
+    const { shape, parentContainer, index } = this.removeShape(id);
     return {
-      record,
-      message: `${record.shape.getTypeName()}#${id} deleted`
+      shape,
+      parentContainer,
+      index,
+      message: `${shape.getTypeName()}#${id} deleted`
     };
   }
 
@@ -202,13 +162,13 @@ export class SvgDocument {
     }
   }
 
-  public restoreDeletedShape(record: DeletedShapeRecord): string {
-    this.restoreRemovedShape(record.shape, record.parentContainer, record.index);
-    const prefix = `${record.shape.getTypeName()}#${record.shape.getId()}`;
-    if (record.parentContainer === this.root) {
+  public restoreDeletedShape(shape: Shape, parentContainer: GroupShape, index: number): string {
+    this.restoreRemovedShape(shape, parentContainer, index);
+    const prefix = `${shape.getTypeName()}#${shape.getId()}`;
+    if (parentContainer === this.root) {
       return `${prefix} restored`;
     }
-    return `${prefix} restored into g#${record.parentContainer.getId()}`;
+    return `${prefix} restored into g#${parentContainer.getId()}`;
   }
 
   public moveShape(id: string, dx: number, dy: number, isUndo: boolean): string {
@@ -217,7 +177,7 @@ export class SvgDocument {
     return shape.formatMoveFeedback(dx, dy, isUndo);
   }
 
-  public scaleShape(id: string, factor: number): { record: ScaledShapeRecord; message: string } {
+  public scaleShape(id: string, factor: number): { snapshot: number[]; message: string } {
     const shape = this.getShapeOrThrow(id);
     if (typeof factor !== 'number' || Number.isNaN(factor) || factor <= 0) {
       throw new Error('error: scale factor must be positive');
@@ -225,28 +185,28 @@ export class SvgDocument {
     const snapshot = shape.captureGeometry();
     shape.scale(factor);
     return {
-      record: { id, factor, snapshot },
+      snapshot,
       message: `${shape.getTypeName()}#${id} scaled by ${Shape.formatNumber(factor)}`
     };
   }
 
-  public restoreScaledShape(record: ScaledShapeRecord): string {
-    const shape = this.getShapeOrThrow(record.id);
-    shape.restoreGeometry(record.snapshot);
-    return `${shape.getTypeName()}#${record.id} scaled back by ${Shape.formatNumber(record.factor)}`;
+  public restoreScaledShape(id: string, factor: number, snapshot: number[]): string {
+    const shape = this.getShapeOrThrow(id);
+    shape.restoreGeometry(snapshot);
+    return `${shape.getTypeName()}#${id} scaled back by ${Shape.formatNumber(factor)}`;
   }
 
   public setShapeAttribute(
     id: string,
     attr: string,
     value: string | undefined
-  ): { record: SetAttributeRecord; message: string } {
+  ): { oldValue: string | undefined; message: string } {
     const shape = this.getShapeOrThrow(id);
     const oldValue = shape.getAttribute(attr);
     shape.setAttribute(attr, value);
     const formattedVal = attr === 'text' ? `"${value ?? ''}"` : `${value ?? 'none'}`;
     return {
-      record: { id, attr, oldValue },
+      oldValue,
       message: `${shape.getTypeName()}#${id} updated: ${attr}=${formattedVal}`
     };
   }
@@ -284,14 +244,21 @@ export class SvgDocument {
   public groupShapes(
     newGid: string,
     memberIds: string[]
-  ): { record: GroupedShapesRecord; message: string } {
+  ): {
+    newGroup: GroupShape;
+    groupParent: GroupShape;
+    memberPositions: Array<{ shape: Shape; oldParent: GroupShape; oldIndex: number }>;
+    message: string;
+  } {
     const members = this.validateGroupTargets(newGid, memberIds);
     const firstParent = members[0].getParent() ?? this.root;
     const firstInitialIndex = firstParent.getChildIndex(members[0]);
 
-    // Check that placing newGroup inside firstParent won't place any member container into its own descendant
     for (const member of members) {
-      if (member.isContainer() && (member === firstParent || member.containsDescendant(firstParent))) {
+      if (
+        member.isContainer() &&
+        (member === firstParent || member.containsDescendant(firstParent))
+      ) {
         throw new Error(
           `error: cannot group a container into its own descendant: ${member.getId()}`
         );
@@ -299,7 +266,7 @@ export class SvgDocument {
     }
 
     let removedBeforeFirst = 0;
-    const memberPositions: GroupMemberPosition[] = [];
+    const memberPositions: Array<{ shape: Shape; oldParent: GroupShape; oldIndex: number }> = [];
     for (const member of members) {
       const oldParent = member.getParent()!;
       const oldIndex = oldParent.getChildIndex(member);
@@ -319,24 +286,36 @@ export class SvgDocument {
     this.shapeIndex.set(newGid, newGroup);
 
     return {
-      record: { newGroup, groupParent: firstParent, memberPositions },
+      newGroup,
+      groupParent: firstParent,
+      memberPositions,
       message: `g#${newGid} created with ${members.length} children`
     };
   }
 
-  public restoreGroupedShapes(record: GroupedShapesRecord): string {
-    const gid = record.newGroup.getId();
-    record.groupParent.removeChild(record.newGroup);
+  public restoreGroupedShapes(
+    newGroup: GroupShape,
+    groupParent: GroupShape,
+    memberPositions: Array<{ shape: Shape; oldParent: GroupShape; oldIndex: number }>
+  ): string {
+    const gid = newGroup.getId();
+    groupParent.removeChild(newGroup);
     this.shapeIndex.delete(gid);
 
-    const sortedPositions = [...record.memberPositions].sort((a, b) => a.oldIndex - b.oldIndex);
+    const sortedPositions = [...memberPositions].sort((a, b) => a.oldIndex - b.oldIndex);
     for (const pos of sortedPositions) {
       pos.oldParent.insertChildAt(pos.shape, pos.oldIndex);
     }
     return `g#${gid} ungrouped`;
   }
 
-  public ungroupShape(gid: string): { record: UngroupedShapeRecord; message: string } {
+  public ungroupShape(gid: string): {
+    groupShape: GroupShape;
+    parent: GroupShape;
+    groupIndex: number;
+    children: Shape[];
+    message: string;
+  } {
     const shape = this.getShapeOrThrow(gid);
     if (shape.isCompositeShape()) {
       throw new Error(`error: cannot ungroup composite shape: ${gid}`);
@@ -361,24 +340,37 @@ export class SvgDocument {
     }
 
     return {
-      record: { groupShape, parent, groupIndex, children },
+      groupShape,
+      parent,
+      groupIndex,
+      children,
       message: `g#${gid} ungrouped`
     };
   }
 
-  public restoreUngroupedShape(record: UngroupedShapeRecord): string {
-    for (const child of record.children) {
-      record.groupShape.addChild(child);
+  public restoreUngroupedShape(
+    groupShape: GroupShape,
+    parent: GroupShape,
+    groupIndex: number,
+    children: Shape[]
+  ): string {
+    for (const child of children) {
+      groupShape.addChild(child);
     }
-    record.parent.insertChildAt(record.groupShape, record.groupIndex);
-    this.shapeIndex.set(record.groupShape.getId(), record.groupShape);
-    return `g#${record.groupShape.getId()} restored with ${record.children.length} children`;
+    parent.insertChildAt(groupShape, groupIndex);
+    this.shapeIndex.set(groupShape.getId(), groupShape);
+    return `g#${groupShape.getId()} restored with ${children.length} children`;
   }
 
   public addShapeToContainer(
     gid: string,
     id: string
-  ): { record: AddToContainerRecord; message: string } {
+  ): {
+    shape: Shape;
+    oldParent: GroupShape;
+    oldIndex: number;
+    message: string;
+  } {
     const targetContainer = this.getContainerOrThrow(gid);
     const shape = this.getShapeOrThrow(id);
     if (shape === targetContainer || shape.containsDescendant(targetContainer)) {
@@ -388,43 +380,62 @@ export class SvgDocument {
     const oldIndex = oldParent.getChildIndex(shape);
     targetContainer.addChild(shape);
     return {
-      record: { shape, targetContainer, oldParent, oldIndex },
+      shape,
+      oldParent,
+      oldIndex,
       message: `${shape.getTypeName()}#${id} added to g#${gid}`
     };
   }
 
-  public restoreAddedShapeToContainer(record: AddToContainerRecord): string {
-    record.oldParent.insertChildAt(record.shape, record.oldIndex);
-    const parentDesc =
-      record.oldParent === this.root ? 'svg' : `g#${record.oldParent.getId()}`;
-    return `${record.shape.getTypeName()}#${record.shape.getId()} restored to ${parentDesc}`;
+  public restoreAddedShapeToContainer(
+    shape: Shape,
+    oldParent: GroupShape,
+    oldIndex: number
+  ): string {
+    oldParent.insertChildAt(shape, oldIndex);
+    const parentDesc = oldParent === this.root ? 'svg' : `g#${oldParent.getId()}`;
+    return `${shape.getTypeName()}#${shape.getId()} restored to ${parentDesc}`;
   }
 
-  public bringToFront(id: string): { record: ZOrderRecord; message: string } {
+  public bringToFront(id: string): {
+    shape: Shape;
+    parent: GroupShape;
+    oldIndex: number;
+    message: string;
+  } {
     const shape = this.getShapeOrThrow(id);
     const parent = shape.getParent()!;
     const oldIndex = parent.getChildIndex(shape);
     parent.addChild(shape);
     return {
-      record: { shape, parent, oldIndex },
+      shape,
+      parent,
+      oldIndex,
       message: `${shape.getTypeName()}#${id} brought to front`
     };
   }
 
-  public sendToBack(id: string): { record: ZOrderRecord; message: string } {
+  public sendToBack(id: string): {
+    shape: Shape;
+    parent: GroupShape;
+    oldIndex: number;
+    message: string;
+  } {
     const shape = this.getShapeOrThrow(id);
     const parent = shape.getParent()!;
     const oldIndex = parent.getChildIndex(shape);
     parent.insertChildAt(shape, 0);
     return {
-      record: { shape, parent, oldIndex },
+      shape,
+      parent,
+      oldIndex,
       message: `${shape.getTypeName()}#${id} sent to back`
     };
   }
 
-  public restoreZOrder(record: ZOrderRecord): string {
-    record.parent.insertChildAt(record.shape, record.oldIndex);
-    return `${record.shape.getTypeName()}#${record.shape.getId()} z-order restored`;
+  public restoreZOrder(shape: Shape, parent: GroupShape, oldIndex: number): string {
+    parent.insertChildAt(shape, oldIndex);
+    return `${shape.getTypeName()}#${shape.getId()} z-order restored`;
   }
 
   public generateUniqueAutoId(tagName: string): string {

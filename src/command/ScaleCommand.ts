@@ -1,13 +1,13 @@
 import type { UndoableCommand } from './UndoableCommand';
 import { CommandResult } from './CommandResult';
-import type { SvgDocument, ScaledShapeRecord } from '../model/SvgDocument';
+import type { SvgDocument } from '../model/SvgDocument';
 
 /**
  * ConcreteCommand for 'scale <id> <factor>'.
  * Delegates proportional scaling to SvgDocument and restores exact pre-scale geometry on undo.
  */
 export class ScaleCommand implements UndoableCommand {
-  private scaledRecord?: ScaledShapeRecord;
+  private snapshot?: number[];
 
   constructor(
     private readonly document: SvgDocument,
@@ -16,16 +16,16 @@ export class ScaleCommand implements UndoableCommand {
   ) {}
 
   public execute(): CommandResult {
-    const { record, message } = this.document.scaleShape(this.id, this.factor);
-    this.scaledRecord = record;
+    const { snapshot, message } = this.document.scaleShape(this.id, this.factor);
+    this.snapshot = snapshot;
     return CommandResult.single(message);
   }
 
   public undo(): CommandResult {
-    if (!this.scaledRecord) {
+    if (!this.snapshot) {
       throw new Error('error: nothing to undo');
     }
-    const message = this.document.restoreScaledShape(this.scaledRecord);
+    const message = this.document.restoreScaledShape(this.id, this.factor, this.snapshot);
     return CommandResult.single(message);
   }
 }

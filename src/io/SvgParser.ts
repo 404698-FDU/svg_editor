@@ -1,15 +1,10 @@
 import { SvgDocument } from '../model/SvgDocument';
-import { RectShape } from '../model/RectShape';
-import { CircleShape } from '../model/CircleShape';
-import { EllipseShape } from '../model/EllipseShape';
-import { LineShape } from '../model/LineShape';
-import { TextShape } from '../model/TextShape';
-import { GroupShape } from '../model/GroupShape';
+import { ShapeFactory } from '../model/ShapeFactory';
 import { SvgParseResult } from './SvgParseResult';
 
 /**
  * Parses an SVG XML text into an SvgDocument instance.
- * Automatically assigns unique '<tag><seq>' IDs to unnamed elements and collects warning messages.
+ * Delegates shape instantiation to ShapeFactory so SvgParser has zero dependency on concrete Shape subclasses.
  */
 export class SvgParser {
   public static parse(xmlContent: string, filePath?: string): SvgParseResult {
@@ -29,7 +24,6 @@ export class SvgParser {
     const doc = new SvgDocument(width, height, filePath);
     const warnings: string[] = [];
 
-    // Pre-collect all explicit IDs in the file to avoid auto-ID collisions
     const reservedIds = new Set<string>();
     const idRegex = /\bid\s*=\s*"([^"]+)"/g;
     let idMatch: RegExpExecArray | null;
@@ -76,21 +70,10 @@ export class SvgParser {
       const currentContainerId = containerStack[containerStack.length - 1];
 
       if (match[1] !== undefined) {
-        // <text ...>content</text>
         const attrs = SvgParser.parseAttributes(match[1]);
         const content = match[2];
         const id = allocateId('text', attrs.get('id'));
-        const x = Number(attrs.get('x') ?? 0);
-        const y = Number(attrs.get('y') ?? 0);
-        const shape = new TextShape(
-          id,
-          x,
-          y,
-          content,
-          attrs.get('fill'),
-          attrs.get('stroke'),
-          attrs.get('stroke-width')
-        );
+        const shape = ShapeFactory.createFromSvgElement('text', id, attrs, content);
         doc.addShape(shape, currentContainerId);
         continue;
       }
@@ -99,63 +82,11 @@ export class SvgParser {
       const attrs = SvgParser.parseAttributes(match[4]);
       const isSelfClosing = match[5] === '/';
       const id = allocateId(tag, attrs.get('id'));
-      const fill = attrs.get('fill');
-      const stroke = attrs.get('stroke');
-      const strokeWidth = attrs.get('stroke-width');
+      const shape = ShapeFactory.createFromSvgElement(tag, id, attrs);
+      doc.addShape(shape, currentContainerId);
 
-      if (tag === 'g') {
-        const group = new GroupShape(id, fill, stroke, strokeWidth);
-        doc.addShape(group, currentContainerId);
-        if (!isSelfClosing) {
-          containerStack.push(id);
-        }
-      } else if (tag === 'rect') {
-        const rect = new RectShape(
-          id,
-          Number(attrs.get('x') ?? 0),
-          Number(attrs.get('y') ?? 0),
-          Number(attrs.get('width') ?? 0),
-          Number(attrs.get('height') ?? 0),
-          fill,
-          stroke,
-          strokeWidth
-        );
-        doc.addShape(rect, currentContainerId);
-      } else if (tag === 'circle') {
-        const circle = new CircleShape(
-          id,
-          Number(attrs.get('cx') ?? 0),
-          Number(attrs.get('cy') ?? 0),
-          Number(attrs.get('r') ?? 0),
-          fill,
-          stroke,
-          strokeWidth
-        );
-        doc.addShape(circle, currentContainerId);
-      } else if (tag === 'ellipse') {
-        const ellipse = new EllipseShape(
-          id,
-          Number(attrs.get('cx') ?? 0),
-          Number(attrs.get('cy') ?? 0),
-          Number(attrs.get('rx') ?? 0),
-          Number(attrs.get('ry') ?? 0),
-          fill,
-          stroke,
-          strokeWidth
-        );
-        doc.addShape(ellipse, currentContainerId);
-      } else if (tag === 'line') {
-        const line = new LineShape(
-          id,
-          Number(attrs.get('x1') ?? 0),
-          Number(attrs.get('y1') ?? 0),
-          Number(attrs.get('x2') ?? 0),
-          Number(attrs.get('y2') ?? 0),
-          stroke,
-          fill,
-          strokeWidth
-        );
-        doc.addShape(line, currentContainerId);
+      if (tag === 'g' && !isSelfClosing) {
+        containerStack.push(id);
       }
     }
 

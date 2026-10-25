@@ -1,12 +1,6 @@
 import type { SvgDocument } from '../model/SvgDocument';
 import type { Shape } from '../model/Shape';
 
-interface TreeRow {
-  left: string;
-  right: string;
-  depth: number;
-}
-
 /**
  * Formats SvgDocument structure for 'tree [id]' and 'show <id>' commands.
  */
@@ -28,7 +22,7 @@ export class TreeFormatter {
       rootChildren = target.getChildren();
     }
 
-    const rows: TreeRow[] = [];
+    const rows: Array<{ left: string; right: string; depth: number }> = [];
     TreeFormatter.collectRows(rootChildren, '', 1, rows);
 
     let maxDepth = 0;
@@ -56,7 +50,7 @@ export class TreeFormatter {
     children: readonly Shape[],
     prefix: string,
     depth: number,
-    out: TreeRow[]
+    out: Array<{ left: string; right: string; depth: number }>
   ): void {
     for (let i = 0; i < children.length; i++) {
       const child = children[i];

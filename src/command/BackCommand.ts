@@ -1,13 +1,17 @@
 import type { UndoableCommand } from './UndoableCommand';
 import { CommandResult } from './CommandResult';
-import type { SvgDocument, ZOrderRecord } from '../model/SvgDocument';
+import type { SvgDocument } from '../model/SvgDocument';
+import type { Shape } from '../model/Shape';
+import type { GroupShape } from '../model/GroupShape';
 
 /**
  * ConcreteCommand for 'back <id>'.
  * Sends the shape to the back (first sibling in SVG painter's order) and restores index on undo.
  */
 export class BackCommand implements UndoableCommand {
-  private zRecord?: ZOrderRecord;
+  private shape?: Shape;
+  private parent?: GroupShape;
+  private oldIndex?: number;
 
   constructor(
     private readonly document: SvgDocument,
@@ -15,16 +19,18 @@ export class BackCommand implements UndoableCommand {
   ) {}
 
   public execute(): CommandResult {
-    const { record, message } = this.document.sendToBack(this.id);
-    this.zRecord = record;
+    const { shape, parent, oldIndex, message } = this.document.sendToBack(this.id);
+    this.shape = shape;
+    this.parent = parent;
+    this.oldIndex = oldIndex;
     return CommandResult.single(message);
   }
 
   public undo(): CommandResult {
-    if (!this.zRecord) {
+    if (!this.shape || !this.parent || this.oldIndex === undefined) {
       throw new Error('error: nothing to undo');
     }
-    const message = this.document.restoreZOrder(this.zRecord);
+    const message = this.document.restoreZOrder(this.shape, this.parent, this.oldIndex);
     return CommandResult.single(message);
   }
 }

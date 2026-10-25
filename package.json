@@ -5,16 +5,19 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "cli": "tsx src/index.ts",
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
-    "test": "vitest run"
+    "test": "vitest run tests"
   },
   "keywords": [
     "svg",
     "cli",
     "editor",
     "typescript",
-    "oop"
+    "oop",
+    "composite-pattern",
+    "command-pattern"
   ],
   "author": "404698-FDU",
   "license": "MIT",

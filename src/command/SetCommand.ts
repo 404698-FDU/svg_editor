@@ -1,13 +1,14 @@
 import type { UndoableCommand } from './UndoableCommand';
 import { CommandResult } from './CommandResult';
-import type { SvgDocument, SetAttributeRecord } from '../model/SvgDocument';
+import type { SvgDocument } from '../model/SvgDocument';
 
 /**
  * ConcreteCommand for 'set <id> <attr> <value>'.
  * Delegates attribute mutation to SvgDocument and stores the previous attribute value for undo.
  */
 export class SetCommand implements UndoableCommand {
-  private attrRecord?: SetAttributeRecord;
+  private hasExecuted = false;
+  private oldValue?: string;
 
   constructor(
     private readonly document: SvgDocument,
@@ -17,20 +18,17 @@ export class SetCommand implements UndoableCommand {
   ) {}
 
   public execute(): CommandResult {
-    const { record, message } = this.document.setShapeAttribute(this.id, this.attr, this.value);
-    this.attrRecord = record;
+    const { oldValue, message } = this.document.setShapeAttribute(this.id, this.attr, this.value);
+    this.oldValue = oldValue;
+    this.hasExecuted = true;
     return CommandResult.single(message);
   }
 
   public undo(): CommandResult {
-    if (!this.attrRecord) {
+    if (!this.hasExecuted) {
       throw new Error('error: nothing to undo');
     }
-    const { message } = this.document.setShapeAttribute(
-      this.id,
-      this.attrRecord.attr,
-      this.attrRecord.oldValue
-    );
+    const { message } = this.document.setShapeAttribute(this.id, this.attr, this.oldValue);
     return CommandResult.single(message);
   }
 }

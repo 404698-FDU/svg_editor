@@ -1,13 +1,18 @@
 import type { UndoableCommand } from './UndoableCommand';
 import { CommandResult } from './CommandResult';
-import type { SvgDocument, UngroupedShapeRecord } from '../model/SvgDocument';
+import type { SvgDocument } from '../model/SvgDocument';
+import type { Shape } from '../model/Shape';
+import type { GroupShape } from '../model/GroupShape';
 
 /**
  * ConcreteCommand for 'ungroup <gid>'.
  * Delegates ungrouping to SvgDocument and restores the container and its children on undo.
  */
 export class UngroupCommand implements UndoableCommand {
-  private ungroupedRecord?: UngroupedShapeRecord;
+  private groupShape?: GroupShape;
+  private parent?: GroupShape;
+  private groupIndex?: number;
+  private children?: Shape[];
 
   constructor(
     private readonly document: SvgDocument,
@@ -15,16 +20,26 @@ export class UngroupCommand implements UndoableCommand {
   ) {}
 
   public execute(): CommandResult {
-    const { record, message } = this.document.ungroupShape(this.gid);
-    this.ungroupedRecord = record;
+    const { groupShape, parent, groupIndex, children, message } = this.document.ungroupShape(
+      this.gid
+    );
+    this.groupShape = groupShape;
+    this.parent = parent;
+    this.groupIndex = groupIndex;
+    this.children = children;
     return CommandResult.single(message);
   }
 
   public undo(): CommandResult {
-    if (!this.ungroupedRecord) {
+    if (!this.groupShape || !this.parent || this.groupIndex === undefined || !this.children) {
       throw new Error('error: nothing to undo');
     }
-    const message = this.document.restoreUngroupedShape(this.ungroupedRecord);
+    const message = this.document.restoreUngroupedShape(
+      this.groupShape,
+      this.parent,
+      this.groupIndex,
+      this.children
+    );
     return CommandResult.single(message);
   }
 }
